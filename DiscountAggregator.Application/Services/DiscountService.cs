@@ -1,5 +1,6 @@
 using DiscountAggregator.Domain.Entities;
 using DiscountAggregator.Domain.Interfaces;
+using DiscountAggregator.Application.Interfaces;
 using DiscountAggregator.Application.DTOs;
 
 namespace DiscountAggregator.Application.Services

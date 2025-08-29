@@ -6,11 +6,11 @@ namespace DiscountAggregator.Infrastructure.Notifications
 {
     public class TelegramNotifier : INotificationService
     {
-        private readonly TelegramBotClient _botClient;
+        private readonly ITelegramBotClient _botClient;
 
-        public TelegramNotifier(string botToken)
+        public TelegramNotifier(ITelegramBotClient botClient)
         {
-            _botClient = new TelegramBotClient(botToken);
+            _botClient = botClient ?? throw new ArgumentNullException(nameof(botClient));
         }
 
         public async Task NotifyAsync(long userId, string message, CancellationToken ct = default)

@@ -1,4 +1,5 @@
-using DiscountAggregator.Domain.Interfaces;
+using DiscountAggregator.Application.Interfaces;
+using DiscountAggregator.Application.DTOs;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;

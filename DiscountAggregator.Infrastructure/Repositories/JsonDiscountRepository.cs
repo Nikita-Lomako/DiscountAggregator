@@ -2,7 +2,7 @@ using System.Text.Json;
 using DiscountAggregator.Domain.Entities;
 using DiscountAggregator.Domain.Interfaces;
 
-namespace DiscountAggregator.Infrastructure.Persistence
+namespace DiscountAggregator.Infrastructure.Repositories
 {
     public class JsonDiscountRepository : IDiscountRepository
     {
