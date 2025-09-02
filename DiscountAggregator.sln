@@ -5,7 +5,6 @@ VisualStudioVersion = 17.14.36212.18
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DiscountAggregator.Application", "DiscountAggregator.Application\DiscountAggregator.Application.csproj", "{BBDAFA44-17A3-4DCE-B18E-09E963F34894}"
 	ProjectSection(ProjectDependencies) = postProject
-		{11F5F5DC-7030-4447-AD7E-D260EA0E9041} = {11F5F5DC-7030-4447-AD7E-D260EA0E9041}
 		{D5C5E7B1-5E21-4B41-A116-013E59C3ED2A} = {D5C5E7B1-5E21-4B41-A116-013E59C3ED2A}
 	EndProjectSection
 EndProject
@@ -13,6 +12,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DiscountAggregator.Domain",
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DiscountAggregator.Infrastructure", "DiscountAggregator.Infrastructure\DiscountAggregator.Infrastructure.csproj", "{11F5F5DC-7030-4447-AD7E-D260EA0E9041}"
 	ProjectSection(ProjectDependencies) = postProject
+		{BBDAFA44-17A3-4DCE-B18E-09E963F34894} = {BBDAFA44-17A3-4DCE-B18E-09E963F34894}
 		{D5C5E7B1-5E21-4B41-A116-013E59C3ED2A} = {D5C5E7B1-5E21-4B41-A116-013E59C3ED2A}
 	EndProjectSection
 EndProject

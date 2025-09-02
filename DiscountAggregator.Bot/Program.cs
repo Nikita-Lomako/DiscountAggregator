@@ -1,5 +1,4 @@
 using DiscountAggregator.Bot.Services;
-using DiscountAggregator.Infrastructure.Logging;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -35,13 +34,20 @@ namespace DiscountAggregator.Bot
 
         static IHostBuilder CreateHostBuilder(string[] args) =>
             Host.CreateDefaultBuilder(args)
-                .UseSerilog((context, services, configuration) => 
-                    LoggingConfiguration.CreateLogger(context.Configuration))
+                 .UseSerilog((context, services, loggerConfiguration) =>
+                {
+                    loggerConfiguration
+                        .ReadFrom.Configuration(context.Configuration)
+                        .ReadFrom.Services(services)
+                        .Enrich.FromLogContext();
+                })
                 .ConfigureServices((context, services) =>
                 {
+                    // Гарантируем существование папки для файлов логов
+                    Directory.CreateDirectory("logs");
                     // Регистрируем все сервисы
                     services.AddBotServices(context.Configuration);
-                    
+
                     // Регистрируем Telegram Bot Hosted Service
                     services.AddHostedService<TelegramBotHostedService>();
                 });
