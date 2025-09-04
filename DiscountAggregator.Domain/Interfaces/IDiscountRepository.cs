@@ -10,5 +10,6 @@ namespace DiscountAggregator.Domain.Interfaces
         Task UpsertAsync(Discount discount, CancellationToken ct = default);
         Task<IEnumerable<Discount>> SearchAsync(string keyword, CancellationToken ct = default);
         Task<IEnumerable<Discount>> GetRecentAsync(int hours, CancellationToken ct = default);
+        Task<IEnumerable<Discount>> SearchSinceAsync(string keyword, DateTime sinceUtc, CancellationToken ct = default);
     }
 }

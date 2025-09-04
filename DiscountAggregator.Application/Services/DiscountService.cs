@@ -30,6 +30,19 @@ namespace DiscountAggregator.Application.Services
             return count;
         }
 
+        public async Task<IEnumerable<Discount>> GetOrCollectAsync(string keyword, TimeSpan cacheTtl, CancellationToken ct = default)
+        {
+            var since = DateTime.UtcNow - cacheTtl;
+            var recent = await _repository.SearchSinceAsync(keyword, since, ct);
+            if (recent.Any())
+            {
+                return recent;
+            }
+
+            await CollectDiscountsAsync(keyword, ct);
+            return await _repository.SearchSinceAsync(keyword, since, ct);
+        }
+
         private Discount Normalize(RawDiscountDto raw, string sourceKey)
         {
             return new Discount

@@ -4,7 +4,7 @@ using DiscountAggregator.Application.Interfaces;
 using DiscountAggregator.Domain.Interfaces;
 using DiscountAggregator.Infrastructure.Notifications;
 using DiscountAggregator.Infrastructure.Repositories;
-using DiscountAggregator.Infrastructure.Sources.Wildberries;
+using DiscountAggregator.Application.Sources.Wildberries;
 using DiscountAggregator.Bot.Configuration;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;

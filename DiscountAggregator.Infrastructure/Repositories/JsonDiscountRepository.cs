@@ -68,5 +68,19 @@ namespace DiscountAggregator.Infrastructure.Repositories
             }
             return await Task.FromResult(result);
         }
+
+        public async Task<IEnumerable<Discount>> SearchSinceAsync(string keyword, DateTime sinceUtc, CancellationToken ct = default)
+        {
+            IEnumerable<Discount> result;
+            lock (_lock)
+            {
+                result = _cache
+                    .Where(d => d.FetchedAtUtc >= sinceUtc)
+                    .Where(d => d.Title.Contains(keyword, StringComparison.OrdinalIgnoreCase) ||
+                                d.Brand.Contains(keyword, StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+            }
+            return await Task.FromResult(result);
+        }
     }
 }

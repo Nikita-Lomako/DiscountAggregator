@@ -8,7 +8,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace DiscountAggregator.Infrastructure.Sources.Wildberries
+namespace DiscountAggregator.Application.Sources.Wildberries
 {
     public class WildberriesSourcePlaywright : IDiscountSource
     {
@@ -33,7 +33,7 @@ namespace DiscountAggregator.Infrastructure.Sources.Wildberries
                 using var playwright = await Playwright.CreateAsync();
                 await using var browser = await playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions
                 {
-                    Headless = true, // false — если хочешь видеть процесс вживую
+                    Headless = true,
                     Args = new[] { "--disable-blink-features=AutomationControlled" }
                 });
 
@@ -47,7 +47,6 @@ namespace DiscountAggregator.Infrastructure.Sources.Wildberries
                 _logger.LogInformation("Переход по адресу WB: {Url}", searchUrl);
                 await page.GotoAsync(searchUrl, new PageGotoOptions { Timeout = 60000 });
 
-                // ждём, пока карточки появятся
                 await page.WaitForSelectorAsync("article.product-card", new PageWaitForSelectorOptions
                 {
                     Timeout = 20000,
@@ -116,3 +115,4 @@ namespace DiscountAggregator.Infrastructure.Sources.Wildberries
         }
     }
 }
+

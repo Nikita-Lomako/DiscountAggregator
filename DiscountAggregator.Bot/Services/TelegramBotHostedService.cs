@@ -100,8 +100,7 @@ namespace DiscountAggregator.Bot.Services
                         cancellationToken: cancellationToken
                     );
 
-                    int count = await discountService.CollectDiscountsAsync(keyword, cancellationToken);
-                    var discounts = await repository.SearchAsync(keyword, cancellationToken);
+                    var discounts = await discountService.GetOrCollectAsync(keyword, TimeSpan.FromHours(1), cancellationToken);
 
                     if (!discounts.Any())
                     {
@@ -113,11 +112,9 @@ namespace DiscountAggregator.Bot.Services
                         return;
                     }
 
-                    foreach (var discount in discounts)
-                    {
-                        string msg = $"{discount.Title}\nБренд: {discount.Brand}\nЦена: {discount.Price} (было {discount.OldPrice})\nСкидка: {discount.DiscountPercent}%\nСсылка: {discount.Url}";
-                        await notifier.NotifyAsync(userId, msg, cancellationToken);
-                    }
+                    var combined = string.Join("\n\n", discounts.Take(10).Select(discount =>
+                        $"{discount.Title}\nБренд: {discount.Brand}\nЦена: {discount.Price} (было {discount.OldPrice})\nСкидка: {discount.DiscountPercent}%\nСсылка: {discount.Url}"));
+                    await notifier.NotifyAsync(userId, combined, cancellationToken);
                 }
                 else
                 {
