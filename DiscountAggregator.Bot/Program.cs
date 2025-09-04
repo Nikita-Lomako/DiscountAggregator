@@ -36,15 +36,20 @@ namespace DiscountAggregator.Bot
             Host.CreateDefaultBuilder(args)
                  .UseSerilog((context, services, loggerConfiguration) =>
                 {
+                    // Готовим абсолютные пути к папке Infrastructure для логов
+                    string baseDir = AppContext.BaseDirectory; // ...\Bot\bin\Debug\net8.0
+                    var infraPath = Path.GetFullPath(Path.Combine(baseDir, "..", "..", "..", "..", "..", "DiscountAggregator", "DiscountAggregator.Infrastructure"));
+                    var infraLogs = Path.Combine(infraPath, "logs");
+                    Directory.CreateDirectory(infraLogs);
                     loggerConfiguration
                         .ReadFrom.Configuration(context.Configuration)
                         .ReadFrom.Services(services)
-                        .Enrich.FromLogContext();
+                        .Enrich.FromLogContext()
+                        .WriteTo.File(Path.Combine(infraLogs, "discount-aggregator-.log"), rollingInterval: RollingInterval.Day, retainedFileCountLimit: 7);
                 })
                 .ConfigureServices((context, services) =>
                 {
-                    // Гарантируем существование папки для файлов логов
-                    Directory.CreateDirectory("logs");
+                    // Ничего не делаем здесь с рабочей директорией
                     // Регистрируем все сервисы
                     services.AddBotServices(context.Configuration);
 

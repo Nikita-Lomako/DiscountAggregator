@@ -18,7 +18,7 @@ namespace DiscountAggregator.Application.Services
 
         public async Task<int> CollectDiscountsAsync(string keyword, CancellationToken ct = default)
         {
-            var request = new SourceFetchRequest { Keyword = keyword, Limit = 10 };
+            var request = new SourceFetchRequest { Keyword = keyword, Limit = 30 };
             var rawDiscounts = await _source.FetchAsync(request, ct);
             int count = 0;
             foreach (var raw in rawDiscounts)

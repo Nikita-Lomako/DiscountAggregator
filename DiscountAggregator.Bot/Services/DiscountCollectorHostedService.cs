@@ -1,5 +1,6 @@
 using DiscountAggregator.Application.Services;
 using DiscountAggregator.Bot.Configuration;
+using DiscountAggregator.Domain.Interfaces;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -34,15 +35,22 @@ namespace DiscountAggregator.Bot.Services
                 {
                     using var scope = _serviceProvider.CreateScope();
                     var collector = scope.ServiceProvider.GetRequiredService<DiscountService>();
+                    var subs = scope.ServiceProvider.GetRequiredService<ISubscriptionRepository>();
 
+                    var allKeywords = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    // collect from user subscriptions
+                    // naive scan over all users from repository is not available with current interface;
+                    // here we fall back to DefaultKeywords; extend later with user registry if needed
                     var keywords = _options.DefaultKeywords?.Length > 0
                         ? _options.DefaultKeywords
                         : new[] { "ноутбук" };
+                    foreach (var k in keywords) allKeywords.Add(k);
 
-                    foreach (var keyword in keywords)
+                    foreach (var keyword in allKeywords)
                     {
-                        var count = await collector.CollectDiscountsAsync(keyword, stoppingToken);
-                        _logger.LogInformation("Collected {Count} discounts for '{Keyword}'", count, keyword);
+                        var items = await collector.GetOrCollectAsync(keyword, TimeSpan.FromHours(1), stoppingToken);
+                        var count = items.Count();
+                        _logger.LogInformation("Collected or reused {Count} discounts for '{Keyword}'", count, keyword);
                         await Task.Delay(TimeSpan.FromMilliseconds(Random.Shared.Next(300, 800)), stoppingToken);
                     }
                 }
