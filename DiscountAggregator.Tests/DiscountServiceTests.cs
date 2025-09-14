@@ -6,6 +6,8 @@ using DiscountAggregator.Domain.Entities;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using System.Threading;
+using DiscountAggregator.Application.Interfaces;
+using DiscountAggregator.Application.DTOs;
 
 namespace DiscountAggregator.Tests
 {

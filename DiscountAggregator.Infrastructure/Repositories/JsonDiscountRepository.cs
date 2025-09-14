@@ -2,7 +2,7 @@ using System.Text.Json;
 using DiscountAggregator.Domain.Entities;
 using DiscountAggregator.Domain.Interfaces;
 
-namespace DiscountAggregator.Infrastructure.Persistence
+namespace DiscountAggregator.Infrastructure.Repositories
 {
     public class JsonDiscountRepository : IDiscountRepository
     {
@@ -65,6 +65,20 @@ namespace DiscountAggregator.Infrastructure.Persistence
             lock (_lock)
             {
                 result = _cache.Where(d => d.FetchedAtUtc >= threshold).ToList();
+            }
+            return await Task.FromResult(result);
+        }
+
+        public async Task<IEnumerable<Discount>> SearchSinceAsync(string keyword, DateTime sinceUtc, CancellationToken ct = default)
+        {
+            IEnumerable<Discount> result;
+            lock (_lock)
+            {
+                result = _cache
+                    .Where(d => d.FetchedAtUtc >= sinceUtc)
+                    .Where(d => d.Title.Contains(keyword, StringComparison.OrdinalIgnoreCase) ||
+                                d.Brand.Contains(keyword, StringComparison.OrdinalIgnoreCase))
+                    .ToList();
             }
             return await Task.FromResult(result);
         }
