@@ -68,7 +68,12 @@ namespace DiscountAggregator.Bot.Services
             var infraData = Path.Combine(infraPath, "data");
             Directory.CreateDirectory(infraData);
             var dataSourceOptions = configuration.GetSection(DataSourceOptions.SectionName).Get<DataSourceOptions>();
-            var discountsPath = Path.IsPathRooted(dataSourceOptions?.JsonFilePath) ? dataSourceOptions!.JsonFilePath : Path.Combine(infraPath, dataSourceOptions?.JsonFilePath ?? "discounts.json");
+            var discountsFileName = string.IsNullOrWhiteSpace(dataSourceOptions?.JsonFilePath)
+                ? "discounts.json"
+                : Path.GetFileName(dataSourceOptions!.JsonFilePath);
+            var discountsPath = Path.IsPathRooted(dataSourceOptions?.JsonFilePath)
+                ? dataSourceOptions!.JsonFilePath
+                : Path.Combine(infraData, discountsFileName);
             services.AddSingleton<IDiscountRepository>(provider => new JsonDiscountRepository(discountsPath));
             services.AddSingleton<ISubscriptionRepository>(provider => new JsonSubscriptionRepository(Path.Combine(infraData, "subscriptions.json")));
             services.AddSingleton<IQueryLogRepository>(provider => new JsonQueryLogRepository(Path.Combine(infraData, "querylog.json")));

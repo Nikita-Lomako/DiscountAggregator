@@ -100,15 +100,21 @@ namespace DiscountAggregator.Bot.Services
                 }
                 else if (text.StartsWith("/subscribe"))
                 {
-                    var subs = await subsRepo.GetByUserAsync(userId, cancellationToken);
-                    if (subs.Count == 0)
+                    var userApi = await userApiRepo.GetByUserAsync(userId, cancellationToken);
+                    var active = userApi.Where(u => u.Subscribed).ToList();
+                    if (active.Count == 0)
                     {
                         await botClient.SendMessage(userId, "У вас нет подписок. Введите /search <ключевое_слово> и подпишитесь из сообщения.", cancellationToken: cancellationToken);
                     }
                     else
                     {
-                        var lines = subs.Select(s => $"- {s.Keyword} ({s.SubscribedAtUtc:yyyy-MM-dd HH:mm})");
-                        await botClient.SendMessage(userId, "Ваши подписки:\n" + string.Join("\n", lines), cancellationToken: cancellationToken);
+                        var apis = (await apiRepo.GetAllAsync(cancellationToken)).ToDictionary(a => a.Id, a => a);
+                        var lines = active
+                            .Select(us => apis.TryGetValue(us.ApiSubscriptionId, out var a)
+                                ? $"- {a.SourceKey}:{a.Keyword}"
+                                : $"- <неизвестный API> {us.ApiSubscriptionId}")
+                            .ToList();
+                        await botClient.SendMessage(userId, "Ваши активные подписки:\n" + string.Join("\n", lines), cancellationToken: cancellationToken);
                     }
                 }
                 else if (text.StartsWith("/search "))

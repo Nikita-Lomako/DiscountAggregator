@@ -35,16 +35,17 @@ namespace DiscountAggregator.Bot.Services
                 {
                     using var scope = _serviceProvider.CreateScope();
                     var collector = scope.ServiceProvider.GetRequiredService<DiscountService>();
-                    var subs = scope.ServiceProvider.GetRequiredService<ISubscriptionRepository>();
+                    var apiRepo = scope.ServiceProvider.GetRequiredService<IApiSubscriptionRepository>();
+                    var userApiRepo = scope.ServiceProvider.GetRequiredService<IUserSubscriptionRepository>();
 
                     var allKeywords = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                    // collect from user subscriptions
-                    // naive scan over all users from repository is not available with current interface;
-                    // here we fall back to DefaultKeywords; extend later with user registry if needed
-                    var keywords = _options.DefaultKeywords?.Length > 0
-                        ? _options.DefaultKeywords
-                        : new[] { "ноутбук" };
-                    foreach (var k in keywords) allKeywords.Add(k);
+                    var apis = await apiRepo.GetAllAsync(stoppingToken);
+                    // берём только те API, на которые подписан хотя бы один пользователь
+                    foreach (var api in apis)
+                    {
+                        var users = await userApiRepo.GetSubscribedUsersAsync(api.Id, stoppingToken);
+                        if (users.Count > 0) allKeywords.Add(api.Keyword);
+                    }
 
                     foreach (var keyword in allKeywords)
                     {
