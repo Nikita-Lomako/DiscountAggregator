@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "DiscountAggregator.Bot": {
+      "commandName": "Project"
+    },
+    "Container (Dockerfile)": {
+      "commandName": "Docker"
+    }
+  }
+}

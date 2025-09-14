@@ -1,10 +1,9 @@
-﻿using Microsoft.Extensions.Configuration;
+﻿using DiscountAggregator.Domain.Interfaces;
+using DiscountAggregator.Infrastructure.Data;
+using DiscountAggregator.Infrastructure.Repositories;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using Telegram.Bot;
 
 namespace DiscountAggregator.Infrastructure.Extensions
@@ -13,10 +12,26 @@ namespace DiscountAggregator.Infrastructure.Extensions
     {
         public static IServiceCollection AddInfrastructureLayer(this IServiceCollection services, IConfiguration config)
         {
+            // Telegram client (optional for infra consumers)
             var token = config["TelegramBot:Token"];
-            if (string.IsNullOrWhiteSpace(token))
-                throw new ArgumentException("Telegram bot token is not configured.");
-            services.AddSingleton<ITelegramBotClient>(new TelegramBotClient(token));
+            if (!string.IsNullOrWhiteSpace(token))
+            {
+                services.AddSingleton<ITelegramBotClient>(new TelegramBotClient(token));
+            }
+
+            // EF Core DbContext if connection string is provided
+            var connectionString = config.GetConnectionString("DefaultConnection");
+            if (!string.IsNullOrWhiteSpace(connectionString))
+            {
+                services.AddDbContext<AppDbContext>(options =>
+                    options.UseNpgsql(connectionString));
+
+                // Register EF-based repositories
+                services.AddScoped<IDiscountRepository, DbDiscountRepository>();
+                services.AddScoped<IQueryLogRepository, DbQueryLogRepository>();
+                services.AddScoped<IApiSubscriptionRepository, DbApiSubscriptionRepository>();
+                services.AddScoped<IUserSubscriptionRepository, DbUserSubscriptionRepository>();
+            }
             return services;
         }
     }
