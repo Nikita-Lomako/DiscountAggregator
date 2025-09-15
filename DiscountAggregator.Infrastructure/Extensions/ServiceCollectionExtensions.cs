@@ -27,10 +27,11 @@ namespace DiscountAggregator.Infrastructure.Extensions
                     options.UseNpgsql(connectionString));
 
                 // Register EF-based repositories
-                services.AddScoped<IDiscountRepository, DbDiscountRepository>();
-                services.AddScoped<IQueryLogRepository, DbQueryLogRepository>();
-                services.AddScoped<IApiSubscriptionRepository, DbApiSubscriptionRepository>();
-                services.AddScoped<IUserSubscriptionRepository, DbUserSubscriptionRepository>();
+                services.AddScoped<IProductRepository, DbProductRepository>();
+                services.AddScoped<IUserRepository, DbUserRepository>();
+                services.AddScoped<IUserProductSubscriptionRepository, DbUserProductSubscriptionRepository>();
+                services.AddScoped<IProductPriceHistoryRepository, DbProductPriceHistoryRepository>();
+                services.AddScoped<ISearchQueryRepository, DbSearchQueryRepository>();
             }
             return services;
         }

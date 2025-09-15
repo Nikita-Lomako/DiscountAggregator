@@ -3,8 +3,8 @@ services:
     image: postgres:15
     container_name: da_db
     environment:
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-      POSTGRES_DB: discountdb
+        POSTGRES_PASSWORD: ${DB_PASSWORD}
+        POSTGRES_DB: productaggregator
     ports:
       - "5432:5432"
     volumes:
@@ -28,9 +28,12 @@ services:
       - db
       - redis
     environment:
-      - ConnectionStrings__DefaultConnection=Host=db;Port=5432;Database=discountdb;Username=postgres;Password=${DB_PASSWORD}
+      - ConnectionStrings__DefaultConnection=Host=db;Port=5432;Database=productaggregator;Username=postgres;Password=${DB_PASSWORD}
       - Redis__Configuration=redis:6379,password=${REDIS_PASSWORD}
       - TelegramBot__Token=${TELEGRAM_BOT_TOKEN}
+      - PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+    volumes:
+      - ./logs:/app/logs
 
 volumes:
   pgdata:

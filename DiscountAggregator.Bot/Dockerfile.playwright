@@ -1,9 +1,39 @@
-FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS base
+# Альтернативный Dockerfile для более надёжной работы с Playwright
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+WORKDIR /src
+
+# Устанавливаем Node.js и npm для Playwright
+RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
+    && apt-get install -y nodejs
+
+# Копируем файлы проектов
+COPY ["DiscountAggregator.Bot/DiscountAggregator.Bot.csproj", "DiscountAggregator.Bot/"]
+COPY ["DiscountAggregator.Application/DiscountAggregator.Application.csproj", "DiscountAggregator.Application/"]
+COPY ["DiscountAggregator.Domain/DiscountAggregator.Domain.csproj", "DiscountAggregator.Domain/"]
+COPY ["DiscountAggregator.Infrastructure/DiscountAggregator.Infrastructure.csproj", "DiscountAggregator.Infrastructure/"]
+
+# Восстанавливаем зависимости
+RUN dotnet restore "DiscountAggregator.Domain/DiscountAggregator.Domain.csproj"
+RUN dotnet restore "DiscountAggregator.Application/DiscountAggregator.Application.csproj"
+RUN dotnet restore "DiscountAggregator.Infrastructure/DiscountAggregator.Infrastructure.csproj"
+RUN dotnet restore "DiscountAggregator.Bot/DiscountAggregator.Bot.csproj"
+
+# Копируем весь код
+COPY . .
+
+WORKDIR "/src/DiscountAggregator.Bot"
+
+# Собираем проект
+RUN dotnet build "DiscountAggregator.Bot.csproj" -c Release -o /app/build
+
+FROM build AS publish
+RUN dotnet publish "DiscountAggregator.Bot.csproj" -c Release -o /app/publish
+
+# Финальный образ на основе Ubuntu с .NET runtime
+FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS final
 WORKDIR /app
-EXPOSE 80
-EXPOSE 443
 
-
+# Устанавливаем системные зависимости
 RUN apt-get update && apt-get install -y \
     wget \
     gnupg \
@@ -11,48 +41,22 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Устанавливаем Node.js для Playwright
+# Устанавливаем Node.js
 RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
     && apt-get install -y nodejs
 
-FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
-WORKDIR /src
-
-COPY ["DiscountAggregator.Bot/DiscountAggregator.Bot.csproj", "DiscountAggregator.Bot/"]
-COPY ["DiscountAggregator.Application/DiscountAggregator.Application.csproj", "DiscountAggregator.Application/"]
-COPY ["DiscountAggregator.Domain/DiscountAggregator.Domain.csproj", "DiscountAggregator.Domain/"]
-COPY ["DiscountAggregator.Infrastructure/DiscountAggregator.Infrastructure.csproj", "DiscountAggregator.Infrastructure/"]
-
-RUN dotnet restore "DiscountAggregator.Domain/DiscountAggregator.Domain.csproj"
-RUN dotnet restore "DiscountAggregator.Application/DiscountAggregator.Application.csproj"
-RUN dotnet restore "DiscountAggregator.Infrastructure/DiscountAggregator.Infrastructure.csproj"
-RUN dotnet restore "DiscountAggregator.Bot/DiscountAggregator.Bot.csproj"
-
-COPY . .
-
-WORKDIR "/src/DiscountAggregator.Bot"
-
-RUN dotnet build "DiscountAggregator.Bot.csproj" -c Release -o /app/build
-
-FROM build AS publish
-RUN dotnet publish "DiscountAggregator.Bot.csproj" -c Release -o /app/publish
-
-FROM base AS final
-WORKDIR /app
+# Копируем опубликованное приложение
 COPY --from=publish /app/publish .
 
+# Устанавливаем Playwright и браузеры
 RUN dotnet tool install --global Microsoft.Playwright.CLI
-ENV PATH="/root/.dotnet/tools:${PATH}"
-
-RUN mkdir -p /tmp/playwright-install
-WORKDIR /tmp/playwright-install
-RUN echo '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup><ItemGroup><PackageReference Include="Microsoft.Playwright" Version="1.54.0" /></ItemGroup></Project>' > TestProject.csproj
-RUN dotnet restore TestProject.csproj
 RUN playwright install chromium --with-deps
 
-WORKDIR /app
-
+# Устанавливаем переменные окружения
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=0
+
+EXPOSE 80
+EXPOSE 443
 
 ENTRYPOINT ["dotnet", "DiscountAggregator.Bot.dll"]

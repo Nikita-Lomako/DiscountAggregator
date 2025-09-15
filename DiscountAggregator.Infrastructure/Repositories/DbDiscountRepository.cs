@@ -5,50 +5,61 @@ using Microsoft.EntityFrameworkCore;
 
 namespace DiscountAggregator.Infrastructure.Repositories
 {
-    public class DbDiscountRepository : IDiscountRepository
+    public class DbProductRepository : IProductRepository
     {
         private readonly AppDbContext _db;
-        public DbDiscountRepository(AppDbContext db) { _db = db; }
+        public DbProductRepository(AppDbContext db) { _db = db; }
 
-        public async Task UpsertAsync(Discount discount, CancellationToken ct = default)
+        public async Task UpsertAsync(Product product, CancellationToken ct = default)
         {
-            var exists = await _db.Discounts.AsNoTracking().FirstOrDefaultAsync(d => d.Fingerprint == discount.Fingerprint, ct);
+            var exists = await _db.Products.AsNoTracking()
+                .FirstOrDefaultAsync(p => p.Source == product.Source && p.ExternalId == product.ExternalId, ct);
+            
             if (exists is null)
             {
-                await _db.Discounts.AddAsync(discount, ct);
+                product.Id = Guid.NewGuid();
+                product.LastUpdatedAtUtc = DateTime.UtcNow;
+                await _db.Products.AddAsync(product, ct);
             }
             else
             {
-                discount.Id = exists.Id;
-                _db.Discounts.Update(discount);
+                product.Id = exists.Id;
+                product.LastUpdatedAtUtc = DateTime.UtcNow;
+                _db.Products.Update(product);
             }
             await _db.SaveChangesAsync(ct);
         }
 
-        public async Task<IEnumerable<Discount>> SearchAsync(string keyword, CancellationToken ct = default)
+        public async Task<IEnumerable<Product>> SearchAsync(string keyword, CancellationToken ct = default)
         {
-            return await _db.Discounts
-                .Where(d => EF.Functions.ILike(d.Title, $"%{keyword}%") || EF.Functions.ILike(d.Brand, $"%{keyword}%"))
-                .OrderByDescending(d => d.FetchedAtUtc)
+            return await _db.Products
+                .Where(p => EF.Functions.ILike(p.Title, $"%{keyword}%") || EF.Functions.ILike(p.Brand, $"%{keyword}%"))
+                .OrderByDescending(p => p.LastUpdatedAtUtc)
                 .ToListAsync(ct);
         }
 
-        public async Task<IEnumerable<Discount>> GetRecentAsync(int hours, CancellationToken ct = default)
+        public async Task<IEnumerable<Product>> GetRecentAsync(int hours, CancellationToken ct = default)
         {
             var threshold = DateTime.UtcNow.AddHours(-hours);
-            return await _db.Discounts
-                .Where(d => d.FetchedAtUtc >= threshold)
-                .OrderByDescending(d => d.FetchedAtUtc)
+            return await _db.Products
+                .Where(p => p.LastUpdatedAtUtc >= threshold)
+                .OrderByDescending(p => p.LastUpdatedAtUtc)
                 .ToListAsync(ct);
         }
 
-        public async Task<IEnumerable<Discount>> SearchSinceAsync(string keyword, DateTime sinceUtc, CancellationToken ct = default)
+        public async Task<IEnumerable<Product>> SearchSinceAsync(string keyword, DateTime sinceUtc, CancellationToken ct = default)
         {
-            return await _db.Discounts
-                .Where(d => d.FetchedAtUtc >= sinceUtc)
-                .Where(d => EF.Functions.ILike(d.Title, $"%{keyword}%") || EF.Functions.ILike(d.Brand, $"%{keyword}%"))
-                .OrderByDescending(d => d.FetchedAtUtc)
+            return await _db.Products
+                .Where(p => p.LastUpdatedAtUtc >= sinceUtc)
+                .Where(p => EF.Functions.ILike(p.Title, $"%{keyword}%") || EF.Functions.ILike(p.Brand, $"%{keyword}%"))
+                .OrderByDescending(p => p.LastUpdatedAtUtc)
                 .ToListAsync(ct);
+        }
+
+        public async Task<Product?> GetBySourceAndExternalIdAsync(string source, string externalId, CancellationToken ct = default)
+        {
+            return await _db.Products
+                .FirstOrDefaultAsync(p => p.Source == source && p.ExternalId == externalId, ct);
         }
     }
 }

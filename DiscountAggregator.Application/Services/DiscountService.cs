@@ -9,34 +9,36 @@ namespace DiscountAggregator.Application.Services
     public class DiscountService
     {
         private readonly IDiscountSource _source;
-        private readonly IDiscountRepository _repository;
-        public DiscountService(IDiscountSource source, IDiscountRepository repository)
+        private readonly IProductRepository _productRepository;
+        private readonly IProductPriceHistoryRepository _priceHistoryRepository;
+        
+        public DiscountService(IDiscountSource source, IProductRepository productRepository, IProductPriceHistoryRepository priceHistoryRepository)
         {
             _source = source;
-            _repository = repository;
+            _productRepository = productRepository;
+            _priceHistoryRepository = priceHistoryRepository;
         }
 
         public async Task<int> CollectDiscountsAsync(string keyword, CancellationToken ct = default)
         {
             var request = new SourceFetchRequest { Keyword = keyword, Limit = 30 };
             Log.Information("CollectDiscounts: fetching from source '{SourceKey}' for '{Keyword}' with limit {Limit}", _source.SourceKey, keyword, request.Limit);
-            var rawDiscounts = await _source.FetchAsync(request, ct);
+            var products = await _source.FetchAsync(request, ct);
             int count = 0;
-            foreach (var raw in rawDiscounts)
+            foreach (var product in products)
             {
-                var discount = Normalize(raw, _source.SourceKey);
-                await _repository.UpsertAsync(discount, ct);
+                await UpsertProductWithPriceHistoryAsync(product, ct);
                 count++;
             }
             Log.Information("CollectDiscounts: upserted {Count} items for '{Keyword}'", count, keyword);
             return count;
         }
 
-        public async Task<IEnumerable<Discount>> GetOrCollectAsync(string keyword, TimeSpan cacheTtl, CancellationToken ct = default)
+        public async Task<IEnumerable<Product>> GetOrCollectAsync(string keyword, TimeSpan cacheTtl, CancellationToken ct = default)
         {
             var since = DateTime.UtcNow - cacheTtl;
-            Log.Information("GetOrCollect: checking cache for '{Keyword}' since {SinceUtc} using {Repository}", keyword, since, _repository.GetType().Name);
-            var recent = await _repository.SearchSinceAsync(keyword, since, ct);
+            Log.Information("GetOrCollect: checking cache for '{Keyword}' since {SinceUtc} using {Repository}", keyword, since, _productRepository.GetType().Name);
+            var recent = await _productRepository.SearchSinceAsync(keyword, since, ct);
             if (recent.Any())
             {
                 Log.Information("GetOrCollect: cache hit for '{Keyword}', returning {Count} items", keyword, recent.Count());
@@ -45,31 +47,42 @@ namespace DiscountAggregator.Application.Services
 
             Log.Information("GetOrCollect: cache miss for '{Keyword}', invoking source fetch", keyword);
             await CollectDiscountsAsync(keyword, ct);
-            var after = await _repository.SearchSinceAsync(keyword, since, ct);
+            var after = await _productRepository.SearchSinceAsync(keyword, since, ct);
             Log.Information("GetOrCollect: after fetch, repository returned {Count} items for '{Keyword}'", after.Count(), keyword);
             return after;
         }
 
-        private Discount Normalize(RawDiscountDto raw, string sourceKey)
+        private async Task UpsertProductWithPriceHistoryAsync(Product product, CancellationToken ct = default)
         {
-            return new Discount
+            var existing = await _productRepository.GetBySourceAndExternalIdAsync(product.Source, product.ExternalId, ct);
+            
+            if (existing == null)
             {
-                Id = Guid.NewGuid(),
-                Source = sourceKey,
-                ExternalId = raw.ExternalId,
-                Title = raw.Title,
-                Brand = raw.Brand,
-                Price = raw.Price,
-                OldPrice = raw.OldPrice,
-                Url = raw.Url,
-                FetchedAtUtc = DateTime.UtcNow,
-                Fingerprint = GenerateFingerprint(sourceKey, raw.ExternalId)
-            };
-        }
-
-        private string GenerateFingerprint(string source, string externalId)
-        {
-            return $"{source}:{externalId}".ToLowerInvariant();
+                // Новый продукт - просто сохраняем
+                await _productRepository.UpsertAsync(product, ct);
+                await _priceHistoryRepository.AddPriceRecordAsync(product.Id, product.CurrentPrice, DateTime.UtcNow, ct);
+            }
+            else
+            {
+                // Существующий продукт - проверяем изменение цены
+                var priceChanged = existing.CurrentPrice != product.CurrentPrice;
+                
+                // Обновляем продукт
+                existing.Title = product.Title;
+                existing.Brand = product.Brand;
+                existing.CurrentPrice = product.CurrentPrice;
+                existing.OldPrice = product.OldPrice;
+                existing.Url = product.Url;
+                existing.LastUpdatedAtUtc = DateTime.UtcNow;
+                
+                await _productRepository.UpsertAsync(existing, ct);
+                
+                // Добавляем запись в историю цен если цена изменилась
+                if (priceChanged)
+                {
+                    await _priceHistoryRepository.AddPriceRecordAsync(existing.Id, product.CurrentPrice, DateTime.UtcNow, ct);
+                }
+            }
         }
     }
 }
