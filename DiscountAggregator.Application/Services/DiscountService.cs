@@ -87,6 +87,33 @@ namespace DiscountAggregator.Application.Services
             Log.Information("SaveProductsToDatabase: saved {Count} products for '{Keyword}' to database", savedCount, keyword);
         }
 
+        public async Task<int> DeleteProductsByKeywordAsync(string keyword, CancellationToken ct = default)
+        {
+            Log.Information("DeleteProductsByKeyword: deleting products for '{Keyword}'", keyword);
+            
+            // Получаем товары для удаления, чтобы получить их ID для удаления истории цен
+            var productsToDelete = await _productRepository.SearchAsync(keyword, ct);
+            var productIds = productsToDelete.Select(p => p.Id).ToList();
+            
+            // Удаляем историю цен для этих товаров
+            int deletedHistoryCount = 0;
+            if (productIds.Any())
+            {
+                deletedHistoryCount = await _priceHistoryRepository.DeleteByProductIdsAsync(productIds, ct);
+                Log.Information("DeleteProductsByKeyword: deleted {Count} price history records for '{Keyword}'", deletedHistoryCount, keyword);
+            }
+            
+            // Удаляем товары
+            int deletedProductsCount = await _productRepository.DeleteByKeywordAsync(keyword, ct);
+            Log.Information("DeleteProductsByKeyword: deleted {Count} products for '{Keyword}'", deletedProductsCount, keyword);
+            
+            // Очищаем кеш
+            await _cacheService.ClearCacheAsync(keyword, ct);
+            Log.Information("DeleteProductsByKeyword: cleared cache for '{Keyword}'", keyword);
+            
+            return deletedProductsCount;
+        }
+
         private async Task UpsertProductWithPriceHistoryAsync(Product product, CancellationToken ct = default)
         {
             var existing = await _productRepository.GetBySourceAndExternalIdAsync(product.Source, product.ExternalId, ct);

@@ -47,5 +47,24 @@ namespace DiscountAggregator.Infrastructure.Repositories
                 .OrderByDescending(h => h.RecordedAtUtc)
                 .ToListAsync(ct);
         }
+
+        public async Task<int> DeleteByProductIdsAsync(IEnumerable<Guid> productIds, CancellationToken ct = default)
+        {
+            var productIdsList = productIds.ToList();
+            if (!productIdsList.Any())
+                return 0;
+
+            var historiesToDelete = await _db.ProductPriceHistories
+                .Where(h => productIdsList.Contains(h.ProductId))
+                .ToListAsync(ct);
+
+            if (historiesToDelete.Any())
+            {
+                _db.ProductPriceHistories.RemoveRange(historiesToDelete);
+                await _db.SaveChangesAsync(ct);
+            }
+
+            return historiesToDelete.Count;
+        }
     }
 }

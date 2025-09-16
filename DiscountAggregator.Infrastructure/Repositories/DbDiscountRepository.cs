@@ -61,6 +61,21 @@ namespace DiscountAggregator.Infrastructure.Repositories
             return await _db.Products
                 .FirstOrDefaultAsync(p => p.Source == source && p.ExternalId == externalId, ct);
         }
+
+        public async Task<int> DeleteByKeywordAsync(string keyword, CancellationToken ct = default)
+        {
+            var productsToDelete = await _db.Products
+                .Where(p => EF.Functions.ILike(p.Title, $"%{keyword}%") || EF.Functions.ILike(p.Brand, $"%{keyword}%"))
+                .ToListAsync(ct);
+
+            if (productsToDelete.Any())
+            {
+                _db.Products.RemoveRange(productsToDelete);
+                await _db.SaveChangesAsync(ct);
+            }
+
+            return productsToDelete.Count;
+        }
     }
 }
 

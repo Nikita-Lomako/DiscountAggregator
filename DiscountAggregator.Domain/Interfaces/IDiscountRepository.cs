@@ -12,5 +12,6 @@ namespace DiscountAggregator.Domain.Interfaces
         Task<IEnumerable<Product>> GetRecentAsync(int hours, CancellationToken ct = default);
         Task<IEnumerable<Product>> SearchSinceAsync(string keyword, DateTime sinceUtc, CancellationToken ct = default);
         Task<Product?> GetBySourceAndExternalIdAsync(string source, string externalId, CancellationToken ct = default);
+        Task<int> DeleteByKeywordAsync(string keyword, CancellationToken ct = default);
     }
 }

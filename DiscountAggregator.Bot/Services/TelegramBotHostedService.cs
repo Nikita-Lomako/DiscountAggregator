@@ -321,11 +321,17 @@ namespace DiscountAggregator.Bot.Services
                     var keyword = parts[2];
                     using var scope = _serviceProvider.CreateScope();
                     var userCategorySubscriptionRepo = scope.ServiceProvider.GetRequiredService<IUserCategorySubscriptionRepository>();
+                    var discountService = scope.ServiceProvider.GetRequiredService<DiscountService>();
                     
                     // Отписываемся от категории
                     await userCategorySubscriptionRepo.DeleteAsync(chatId, keyword, sourceKey, ct);
                     
-                    await _botClient.AnswerCallbackQuery(query.Id, $"Подписка на '{keyword}' удалена", cancellationToken: ct);
+                    // Удаляем все данные связанные с этой категорией
+                    var deletedCount = await discountService.DeleteProductsByKeywordAsync(keyword, ct);
+                    
+                    await _botClient.AnswerCallbackQuery(query.Id, 
+                        $"Подписка на '{keyword}' удалена. Удалено товаров: {deletedCount}", 
+                        cancellationToken: ct);
                 }
             }
             catch (Exception ex)

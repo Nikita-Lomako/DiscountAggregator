@@ -11,5 +11,6 @@ namespace DiscountAggregator.Domain.Interfaces
         Task<IEnumerable<ProductPriceHistory>> GetByProductIdAsync(Guid productId, CancellationToken ct = default);
         Task<ProductPriceHistory?> GetLatestByProductIdAsync(Guid productId, CancellationToken ct = default);
         Task<IEnumerable<ProductPriceHistory>> GetByProductIdSinceAsync(Guid productId, DateTime sinceUtc, CancellationToken ct = default);
+        Task<int> DeleteByProductIdsAsync(IEnumerable<Guid> productIds, CancellationToken ct = default);
     }
 }
