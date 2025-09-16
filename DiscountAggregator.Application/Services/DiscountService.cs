@@ -11,12 +11,14 @@ namespace DiscountAggregator.Application.Services
         private readonly IDiscountSource _source;
         private readonly IProductRepository _productRepository;
         private readonly IProductPriceHistoryRepository _priceHistoryRepository;
+        private readonly IProductCacheService _cacheService;
         
-        public DiscountService(IDiscountSource source, IProductRepository productRepository, IProductPriceHistoryRepository priceHistoryRepository)
+        public DiscountService(IDiscountSource source, IProductRepository productRepository, IProductPriceHistoryRepository priceHistoryRepository, IProductCacheService cacheService)
         {
             _source = source;
             _productRepository = productRepository;
             _priceHistoryRepository = priceHistoryRepository;
+            _cacheService = cacheService;
         }
 
         public async Task<int> CollectDiscountsAsync(string keyword, CancellationToken ct = default)
@@ -36,20 +38,53 @@ namespace DiscountAggregator.Application.Services
 
         public async Task<IEnumerable<Product>> GetOrCollectAsync(string keyword, TimeSpan cacheTtl, CancellationToken ct = default)
         {
-            var since = DateTime.UtcNow - cacheTtl;
-            Log.Information("GetOrCollect: checking cache for '{Keyword}' since {SinceUtc} using {Repository}", keyword, since, _productRepository.GetType().Name);
-            var recent = await _productRepository.SearchSinceAsync(keyword, since, ct);
-            if (recent.Any())
+            Log.Information("GetOrCollect: checking Redis cache for '{Keyword}'", keyword);
+            
+            // Сначала проверяем Redis кеш
+            var cachedProducts = await _cacheService.GetCachedProductsAsync(keyword, ct);
+            if (cachedProducts.Any())
             {
-                Log.Information("GetOrCollect: cache hit for '{Keyword}', returning {Count} items", keyword, recent.Count());
-                return recent;
+                Log.Information("GetOrCollect: Redis cache hit for '{Keyword}', returning {Count} items", keyword, cachedProducts.Count());
+                return cachedProducts;
             }
 
-            Log.Information("GetOrCollect: cache miss for '{Keyword}', invoking source fetch", keyword);
-            await CollectDiscountsAsync(keyword, ct);
-            var after = await _productRepository.SearchSinceAsync(keyword, since, ct);
-            Log.Information("GetOrCollect: after fetch, repository returned {Count} items for '{Keyword}'", after.Count(), keyword);
-            return after;
+            Log.Information("GetOrCollect: Redis cache miss for '{Keyword}', fetching from source", keyword);
+            
+            // Если в кеше нет, получаем данные из источника
+            var request = new SourceFetchRequest { Keyword = keyword, Limit = 30 };
+            var products = await _source.FetchAsync(request, ct);
+            var productsList = products.ToList();
+            
+            // Сохраняем в Redis кеш
+            await _cacheService.SetCachedProductsAsync(keyword, productsList, cacheTtl, ct);
+            
+            Log.Information("GetOrCollect: fetched and cached {Count} items for '{Keyword}'", productsList.Count, keyword);
+            return productsList;
+        }
+
+        public async Task SaveProductsToDatabaseAsync(string keyword, CancellationToken ct = default)
+        {
+            Log.Information("SaveProductsToDatabase: saving products for '{Keyword}' to database", keyword);
+            
+            // Получаем товары из кеша
+            var cachedProducts = await _cacheService.GetCachedProductsAsync(keyword, ct);
+            var productsList = cachedProducts.ToList();
+            
+            if (!productsList.Any())
+            {
+                Log.Warning("SaveProductsToDatabase: no cached products found for '{Keyword}'", keyword);
+                return;
+            }
+
+            // Сохраняем каждый товар в БД
+            int savedCount = 0;
+            foreach (var product in productsList)
+            {
+                await UpsertProductWithPriceHistoryAsync(product, ct);
+                savedCount++;
+            }
+            
+            Log.Information("SaveProductsToDatabase: saved {Count} products for '{Keyword}' to database", savedCount, keyword);
         }
 
         private async Task UpsertProductWithPriceHistoryAsync(Product product, CancellationToken ct = default)

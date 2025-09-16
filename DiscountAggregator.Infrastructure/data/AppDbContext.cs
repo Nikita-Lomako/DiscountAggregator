@@ -10,7 +10,7 @@ namespace DiscountAggregator.Infrastructure.Data
         public DbSet<Product> Products => Set<Product>();
         public DbSet<ProductPriceHistory> ProductPriceHistories => Set<ProductPriceHistory>();
         public DbSet<User> Users => Set<User>();
-        public DbSet<UserProductSubscription> UserProductSubscriptions => Set<UserProductSubscription>();
+        public DbSet<UserCategorySubscription> UserCategorySubscriptions => Set<UserCategorySubscription>();
         public DbSet<SearchQuery> SearchQueries => Set<SearchQuery>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -45,16 +45,15 @@ namespace DiscountAggregator.Infrastructure.Data
                 entity.HasIndex(u => u.LastActivityAtUtc);
             });
 
-            modelBuilder.Entity<UserProductSubscription>(entity =>
+
+            modelBuilder.Entity<UserCategorySubscription>(entity =>
             {
-                entity.HasKey(x => new { x.UserId, x.ProductId });
+                entity.HasKey(x => new { x.UserId, x.Keyword, x.SourceFilter });
+                entity.Property(x => x.Keyword).HasMaxLength(200);
+                entity.Property(x => x.SourceFilter).HasMaxLength(50);
                 entity.HasOne(x => x.User)
-                    .WithMany(u => u.ProductSubscriptions)
+                    .WithMany()
                     .HasForeignKey(x => x.UserId)
-                    .OnDelete(DeleteBehavior.Cascade);
-                entity.HasOne(x => x.Product)
-                    .WithMany(p => p.UserSubscriptions)
-                    .HasForeignKey(x => x.ProductId)
                     .OnDelete(DeleteBehavior.Cascade);
                 entity.HasIndex(x => new { x.UserId, x.IsActive });
             });

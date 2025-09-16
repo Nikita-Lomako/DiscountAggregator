@@ -67,6 +67,7 @@ namespace DiscountAggregator.Bot.Services
             services.AddInfrastructureLayer(configuration);
 
             // Сервисы приложения
+            services.AddScoped<IProductCacheService, RedisProductCacheService>();
             services.AddScoped<DiscountService>();
             services.AddScoped<CollectDiscountsCommand>();
 

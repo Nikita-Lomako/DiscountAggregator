@@ -77,7 +77,7 @@ namespace DiscountAggregator.Bot.Services
             using var scope = _serviceProvider.CreateScope();
             var discountService = scope.ServiceProvider.GetRequiredService<DiscountService>();
             var userRepo = scope.ServiceProvider.GetRequiredService<IUserRepository>();
-            var userProductSubscriptionRepo = scope.ServiceProvider.GetRequiredService<IUserProductSubscriptionRepository>();
+            var userCategorySubscriptionRepo = scope.ServiceProvider.GetRequiredService<IUserCategorySubscriptionRepository>();
             var searchQueryRepo = scope.ServiceProvider.GetRequiredService<ISearchQueryRepository>();
             var notifier = scope.ServiceProvider.GetRequiredService<INotificationService>();
 
@@ -101,7 +101,7 @@ namespace DiscountAggregator.Bot.Services
                 }
                 else if (text.StartsWith("/subscribe"))
                 {
-                    var subscriptions = await userProductSubscriptionRepo.GetActiveByUserIdAsync(userId, cancellationToken);
+                    var subscriptions = await userCategorySubscriptionRepo.GetActiveByUserIdAsync(userId, cancellationToken);
                     if (!subscriptions.Any())
                     {
                         await botClient.SendMessage(userId, "У вас нет подписок. Введите /search <ключевое_слово> и подпишитесь из сообщения.", cancellationToken: cancellationToken);
@@ -109,9 +109,9 @@ namespace DiscountAggregator.Bot.Services
                     else
                     {
                         var lines = subscriptions
-                            .Select(s => $"- {s.Product.Source}: {s.Product.Title}")
+                            .Select(s => $"- {s.SourceFilter}: {s.Keyword}")
                             .ToList();
-                        await botClient.SendMessage(userId, "Ваши активные подписки:\n" + string.Join("\n", lines), cancellationToken: cancellationToken);
+                        await botClient.SendMessage(userId, "Ваши активные подписки на категории:\n" + string.Join("\n", lines), cancellationToken: cancellationToken);
                     }
                 }
                 else if (text.StartsWith("/search "))
@@ -294,34 +294,24 @@ namespace DiscountAggregator.Bot.Services
                     var keyword = parts[2];
                     using var scope = _serviceProvider.CreateScope();
                     var discountService = scope.ServiceProvider.GetRequiredService<DiscountService>();
-                    var userProductSubscriptionRepo = scope.ServiceProvider.GetRequiredService<IUserProductSubscriptionRepository>();
+                    var userCategorySubscriptionRepo = scope.ServiceProvider.GetRequiredService<IUserCategorySubscriptionRepository>();
                     
-                    // Получаем продукты по ключевому слову
-                    var products = await discountService.GetOrCollectAsync(keyword, TimeSpan.FromHours(1), ct);
-                    
-                    // Подписываемся на все найденные продукты
-                    foreach (var product in products)
+                    // Создаем подписку на категорию
+                    var subscription = new Domain.Entities.UserCategorySubscription
                     {
-                        var existing = await userProductSubscriptionRepo.GetByUserAndProductAsync(chatId, product.Id, ct);
-                        if (existing == null)
-                        {
-                            await userProductSubscriptionRepo.UpsertAsync(new UserProductSubscription
-                            {
-                                UserId = chatId,
-                                ProductId = product.Id,
-                                IsActive = true,
-                                SubscribedAtUtc = DateTime.UtcNow
-                            }, ct);
-                        }
-                        else if (!existing.IsActive)
-                        {
-                            existing.IsActive = true;
-                            existing.SubscribedAtUtc = DateTime.UtcNow;
-                            await userProductSubscriptionRepo.UpsertAsync(existing, ct);
-                        }
-                    }
+                        UserId = chatId,
+                        Keyword = keyword,
+                        SourceFilter = sourceKey,
+                        IsActive = true,
+                        SubscribedAtUtc = DateTime.UtcNow
+                    };
                     
-                    await _botClient.AnswerCallbackQuery(query.Id, "Подписка добавлена", cancellationToken: ct);
+                    await userCategorySubscriptionRepo.UpsertAsync(subscription, ct);
+                    
+                    // Сохраняем товары из кеша в базу данных
+                    await discountService.SaveProductsToDatabaseAsync(keyword, ct);
+                    
+                    await _botClient.AnswerCallbackQuery(query.Id, $"Подписка на '{keyword}' добавлена", cancellationToken: ct);
                 }
                 else if (query.Data.StartsWith("unsub:"))
                 {
@@ -330,23 +320,12 @@ namespace DiscountAggregator.Bot.Services
                     var sourceKey = parts[1];
                     var keyword = parts[2];
                     using var scope = _serviceProvider.CreateScope();
-                    var discountService = scope.ServiceProvider.GetRequiredService<DiscountService>();
-                    var userProductSubscriptionRepo = scope.ServiceProvider.GetRequiredService<IUserProductSubscriptionRepository>();
+                    var userCategorySubscriptionRepo = scope.ServiceProvider.GetRequiredService<IUserCategorySubscriptionRepository>();
                     
-                    // Получаем продукты по ключевому слову
-                    var products = await discountService.GetOrCollectAsync(keyword, TimeSpan.FromHours(1), ct);
+                    // Отписываемся от категории
+                    await userCategorySubscriptionRepo.DeleteAsync(chatId, keyword, sourceKey, ct);
                     
-                    // Отписываемся от всех найденных продуктов
-                    foreach (var product in products)
-                    {
-                        var existing = await userProductSubscriptionRepo.GetByUserAndProductAsync(chatId, product.Id, ct);
-                        if (existing != null && existing.IsActive)
-                        {
-                            await userProductSubscriptionRepo.DeleteAsync(chatId, product.Id, ct);
-                        }
-                    }
-                    
-                    await _botClient.AnswerCallbackQuery(query.Id, "Подписка удалена", cancellationToken: ct);
+                    await _botClient.AnswerCallbackQuery(query.Id, $"Подписка на '{keyword}' удалена", cancellationToken: ct);
                 }
             }
             catch (Exception ex)

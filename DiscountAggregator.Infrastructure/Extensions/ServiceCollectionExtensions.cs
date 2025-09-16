@@ -29,7 +29,7 @@ namespace DiscountAggregator.Infrastructure.Extensions
                 // Register EF-based repositories
                 services.AddScoped<IProductRepository, DbProductRepository>();
                 services.AddScoped<IUserRepository, DbUserRepository>();
-                services.AddScoped<IUserProductSubscriptionRepository, DbUserProductSubscriptionRepository>();
+                services.AddScoped<IUserCategorySubscriptionRepository, DbUserCategorySubscriptionRepository>();
                 services.AddScoped<IProductPriceHistoryRepository, DbProductPriceHistoryRepository>();
                 services.AddScoped<ISearchQueryRepository, DbSearchQueryRepository>();
             }

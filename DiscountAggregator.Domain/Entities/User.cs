@@ -7,7 +7,6 @@ namespace DiscountAggregator.Domain.Entities
         public DateTime RegisteredAtUtc { get; set; }
         public DateTime LastActivityAtUtc { get; set; }
 
-        public ICollection<UserProductSubscription> ProductSubscriptions { get; set; } = new List<UserProductSubscription>();
         public ICollection<SearchQuery> SearchHistory { get; set; } = new List<SearchQuery>();
     }
 }

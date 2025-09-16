@@ -14,7 +14,6 @@ namespace DiscountAggregator.Domain.Entities
 
         // Navigation
         public ICollection<ProductPriceHistory> PriceHistory { get; set; } = new List<ProductPriceHistory>();
-        public ICollection<UserProductSubscription> UserSubscriptions { get; set; } = new List<UserProductSubscription>();
 
         public decimal DiscountPercent => OldPrice > 0 ? Math.Round(100 * (OldPrice - CurrentPrice) / OldPrice, 2) : 0;
     }

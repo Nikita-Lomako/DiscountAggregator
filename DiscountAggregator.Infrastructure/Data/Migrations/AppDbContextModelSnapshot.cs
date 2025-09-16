@@ -149,13 +149,18 @@ namespace DiscountAggregator.Infrastructure.Data.Migrations
                     b.ToTable("Users");
                 });
 
-            modelBuilder.Entity("DiscountAggregator.Domain.Entities.UserProductSubscription", b =>
+            modelBuilder.Entity("DiscountAggregator.Domain.Entities.UserCategorySubscription", b =>
                 {
                     b.Property<long>("UserId")
                         .HasColumnType("bigint");
 
-                    b.Property<Guid>("ProductId")
-                        .HasColumnType("uuid");
+                    b.Property<string>("Keyword")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("SourceFilter")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
@@ -163,13 +168,11 @@ namespace DiscountAggregator.Infrastructure.Data.Migrations
                     b.Property<DateTime>("SubscribedAtUtc")
                         .HasColumnType("timestamp with time zone");
 
-                    b.HasKey("UserId", "ProductId");
-
-                    b.HasIndex("ProductId");
+                    b.HasKey("UserId", "Keyword", "SourceFilter");
 
                     b.HasIndex("UserId", "IsActive");
 
-                    b.ToTable("UserProductSubscriptions");
+                    b.ToTable("UserCategorySubscriptions");
                 });
 
             modelBuilder.Entity("DiscountAggregator.Domain.Entities.ProductPriceHistory", b =>
@@ -194,21 +197,13 @@ namespace DiscountAggregator.Infrastructure.Data.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("DiscountAggregator.Domain.Entities.UserProductSubscription", b =>
+            modelBuilder.Entity("DiscountAggregator.Domain.Entities.UserCategorySubscription", b =>
                 {
-                    b.HasOne("DiscountAggregator.Domain.Entities.Product", "Product")
-                        .WithMany("UserSubscriptions")
-                        .HasForeignKey("ProductId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
                     b.HasOne("DiscountAggregator.Domain.Entities.User", "User")
-                        .WithMany("ProductSubscriptions")
+                        .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-
-                    b.Navigation("Product");
 
                     b.Navigation("User");
                 });
@@ -216,14 +211,10 @@ namespace DiscountAggregator.Infrastructure.Data.Migrations
             modelBuilder.Entity("DiscountAggregator.Domain.Entities.Product", b =>
                 {
                     b.Navigation("PriceHistory");
-
-                    b.Navigation("UserSubscriptions");
                 });
 
             modelBuilder.Entity("DiscountAggregator.Domain.Entities.User", b =>
                 {
-                    b.Navigation("ProductSubscriptions");
-
                     b.Navigation("SearchHistory");
                 });
 #pragma warning restore 612, 618
