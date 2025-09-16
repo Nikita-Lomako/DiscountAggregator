@@ -85,6 +85,9 @@ namespace DiscountAggregator.Bot.Services
             {
                 if (text.StartsWith("/start"))
                 {
+                    // Создаем или получаем пользователя
+                    await GetOrCreateUserAsync(userId, message, userRepo, cancellationToken);
+
                     await botClient.SendMessage(
                         chatId: userId,
                         text: "Добро пожаловать! Используйте /search <ключевое_слово> для поиска скидок. Команды: /subscribe, /info",
@@ -142,12 +145,16 @@ namespace DiscountAggregator.Bot.Services
                         return;
                     }
 
+                    // Создаем или получаем пользователя
+                    await GetOrCreateUserAsync(userId, message, userRepo, cancellationToken);
+
                     await searchQueryRepo.AddQueryAsync(new SearchQuery 
                     { 
                         UserId = userId, 
                         Keyword = keyword, 
                         SourceFilter = "wildberries",
-                        KeywordNormalized = keyword.ToLowerInvariant()
+                        KeywordNormalized = keyword.ToLowerInvariant(),
+                        QueriedAtUtc = DateTime.UtcNow
                     }, cancellationToken);
                     
                     var page = 1;
@@ -230,6 +237,29 @@ namespace DiscountAggregator.Bot.Services
                     cancellationToken: ct
                 );
             }
+        }
+
+        private async Task<Domain.Entities.User> GetOrCreateUserAsync(long userId, Message message, IUserRepository userRepo, CancellationToken cancellationToken)
+        {
+            var user = await userRepo.GetByIdAsync(userId, cancellationToken);
+            if (user == null)
+            {
+                user = new Domain.Entities.User
+                {
+                    Id = userId,
+                    Username = message.From?.Username,
+                    RegisteredAtUtc = DateTime.UtcNow,
+                    LastActivityAtUtc = DateTime.UtcNow
+                };
+                await userRepo.UpsertAsync(user, cancellationToken);
+            }
+            else
+            {
+                // Обновляем время последней активности
+                user.LastActivityAtUtc = DateTime.UtcNow;
+                await userRepo.UpsertAsync(user, cancellationToken);
+            }
+            return user;
         }
 
         private async Task HandleCallback(CallbackQuery query, CancellationToken ct)

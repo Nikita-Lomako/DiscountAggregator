@@ -54,11 +54,7 @@ namespace DiscountAggregator.Application.Sources.Wildberries
                 _logger.LogInformation("Переход по адресу WB: {Url}", searchUrl);
                 try
                 {
-                    await page.GotoAsync(searchUrl, new PageGotoOptions
-                    {
-                        Timeout = 60000,
-                        WaitUntil = WaitUntilState.NetworkIdle
-                    });
+                    await page.GotoAsync(searchUrl, new PageGotoOptions { Timeout = 60000 });
                 }
                 catch (TimeoutException)
                 {
