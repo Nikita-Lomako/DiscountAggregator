@@ -35,23 +35,21 @@ namespace DiscountAggregator.Bot.Services
                 {
                     using var scope = _serviceProvider.CreateScope();
                     var collector = scope.ServiceProvider.GetRequiredService<DiscountService>();
-                    var apiRepo = scope.ServiceProvider.GetRequiredService<IApiSubscriptionRepository>();
-                    var userApiRepo = scope.ServiceProvider.GetRequiredService<IUserSubscriptionRepository>();
+                    var searchQueryRepo = scope.ServiceProvider.GetRequiredService<ISearchQueryRepository>();
 
-                    var allKeywords = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                    var apis = await apiRepo.GetAllAsync(stoppingToken);
-                    // берём только те API, на которые подписан хотя бы один пользователь
-                    foreach (var api in apis)
-                    {
-                        var users = await userApiRepo.GetSubscribedUsersAsync(api.Id, stoppingToken);
-                        if (users.Count > 0) allKeywords.Add(api.Keyword);
-                    }
+                    // Получаем уникальные ключевые слова из недавних запросов (за последние 2 часа)
+                    var recentQueries = await searchQueryRepo.GetRecentQueriesAsync(2, stoppingToken);
+                    var keywords = recentQueries
+                        .Select(q => q.Keyword)
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .Take(10) // Ограничиваем количество для производительности
+                        .ToList();
 
-                    foreach (var keyword in allKeywords)
+                    foreach (var keyword in keywords)
                     {
                         var items = await collector.GetOrCollectAsync(keyword, TimeSpan.FromHours(1), stoppingToken);
                         var count = items.Count();
-                        _logger.LogInformation("Collected or reused {Count} discounts for '{Keyword}'", count, keyword);
+                        _logger.LogInformation("Collected or reused {Count} products for '{Keyword}'", count, keyword);
                         await Task.Delay(TimeSpan.FromMilliseconds(Random.Shared.Next(300, 800)), stoppingToken);
                     }
                 }

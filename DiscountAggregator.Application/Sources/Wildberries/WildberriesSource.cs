@@ -1,12 +1,8 @@
 using DiscountAggregator.Application.DTOs;
 using DiscountAggregator.Application.Interfaces;
+using DiscountAggregator.Domain.Entities;
 using Microsoft.Extensions.Logging;
 using Microsoft.Playwright;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace DiscountAggregator.Application.Sources.Wildberries
 {
@@ -21,12 +17,12 @@ namespace DiscountAggregator.Application.Sources.Wildberries
 
         public string SourceKey => "wildberries";
 
-        public async Task<IEnumerable<RawDiscountDto>> FetchAsync(SourceFetchRequest request, CancellationToken ct = default)
+        public async Task<IEnumerable<Product>> FetchAsync(SourceFetchRequest request, CancellationToken ct = default)
         {
             var keyword = string.IsNullOrWhiteSpace(request.Keyword) ? "скидки" : request.Keyword.Trim();
             var searchUrl = $"https://www.wildberries.ru/catalog/0/search.aspx?page=1&sort=popular&search={Uri.EscapeDataString(keyword)}";
 
-            var items = new List<RawDiscountDto>();
+            var items = new List<Product>();
 
             try
             {
@@ -34,24 +30,51 @@ namespace DiscountAggregator.Application.Sources.Wildberries
                 await using var browser = await playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions
                 {
                     Headless = true,
-                    Args = new[] { "--disable-blink-features=AutomationControlled" }
+                    Args = new[] {
+                        "--disable-blink-features=AutomationControlled",
+                        "--no-sandbox",
+                        "--disable-setuid-sandbox",
+                        "--disable-dev-shm-usage",
+                        "--disable-gpu",
+                        "--disable-web-security",
+                        "--disable-features=VizDisplayCompositor",
+                        "--single-process",
+                        "--no-zygote"
+                    }
                 });
 
                 var context = await browser.NewContextAsync(new BrowserNewContextOptions
                 {
-                    UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36"
+                    UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36",
+                    ViewportSize = new ViewportSize { Width = 1920, Height = 1080 }
                 });
 
                 var page = await context.NewPageAsync();
 
                 _logger.LogInformation("Переход по адресу WB: {Url}", searchUrl);
-                await page.GotoAsync(searchUrl, new PageGotoOptions { Timeout = 60000 });
-
-                await page.WaitForSelectorAsync("article.product-card", new PageWaitForSelectorOptions
+                try
                 {
-                    Timeout = 20000,
-                    State = WaitForSelectorState.Attached
-                });
+                    await page.GotoAsync(searchUrl, new PageGotoOptions { Timeout = 60000 });
+                }
+                catch (TimeoutException)
+                {
+                    _logger.LogWarning("Таймаут при загрузке страницы WB: {Url}", searchUrl);
+                    return Enumerable.Empty<Product>();
+                }
+                // Ждем появления карточек товаров
+                try
+                {
+                    await page.WaitForSelectorAsync("article.product-card", new PageWaitForSelectorOptions
+                    {
+                        Timeout = 30000,
+                        State = WaitForSelectorState.Attached
+                    });
+                }
+                catch (TimeoutException)
+                {
+                    _logger.LogWarning("Карточки товаров не найдены на WB по запросу: {Keyword}", keyword);
+                    return Enumerable.Empty<Product>();
+                }
 
                 var cards = await page.QuerySelectorAllAsync("article.product-card");
                 _logger.LogInformation("WB url: {Url}; найдено карточек: {Count}", searchUrl, cards.Count);
@@ -59,15 +82,16 @@ namespace DiscountAggregator.Application.Sources.Wildberries
                 if (!cards.Any())
                 {
                     _logger.LogWarning("WB: карточки не найдены по запросу {Keyword}", keyword);
-                    return Enumerable.Empty<RawDiscountDto>();
+                    return Enumerable.Empty<Product>();
                 }
 
                 foreach (var card in cards.Take(Math.Max(1, request.Limit)))
                 {
                     if (ct.IsCancellationRequested)
                         break;
-
-                    var idAttr = await card.GetAttributeAsync("data-nm-id");
+                    try
+                    {
+                        var idAttr = await card.GetAttributeAsync("data-nm-id");
                     var linkNode = await card.QuerySelectorAsync("a.product-card__link");
                     var brandNode = await card.QuerySelectorAsync("span.product-card__brand");
                     var nameNode = await card.QuerySelectorAsync("span.product-card__name");
@@ -94,15 +118,24 @@ namespace DiscountAggregator.Application.Sources.Wildberries
                     var price = ParsePrice(await (priceNode?.InnerTextAsync() ?? Task.FromResult(string.Empty)));
                     var oldPrice = ParsePrice(await (oldNode?.InnerTextAsync() ?? Task.FromResult(string.Empty)));
 
-                    items.Add(new RawDiscountDto
+                    items.Add(new Product
                     {
+                        Id = Guid.NewGuid(),
+                        Source = SourceKey,
                         ExternalId = string.IsNullOrWhiteSpace(idAttr) ? Guid.NewGuid().ToString() : idAttr,
                         Title = title,
                         Brand = brand,
-                        Price = price,
+                        CurrentPrice = price,
                         OldPrice = oldPrice > 0 ? oldPrice : price,
-                        Url = urlAbs
+                        Url = urlAbs,
+                        LastUpdatedAtUtc = DateTime.UtcNow
                     });
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Ошибка при обработке карточки товара на WB");
+                        continue;
+                    }
                 }
 
                 return items;
@@ -110,7 +143,7 @@ namespace DiscountAggregator.Application.Sources.Wildberries
             catch (Exception ex)
             {
                 _logger.LogError(ex, "WB fetch error for keyword {Keyword}", keyword);
-                return Enumerable.Empty<RawDiscountDto>();
+                return Enumerable.Empty<Product>();
             }
         }
     }

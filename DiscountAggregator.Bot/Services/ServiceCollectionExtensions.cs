@@ -11,6 +11,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Telegram.Bot;
 using System.Net.Http.Headers;
 using System.Net;
+using DiscountAggregator.Infrastructure.Extensions;
 
 namespace DiscountAggregator.Bot.Services
 {
@@ -62,25 +63,11 @@ namespace DiscountAggregator.Bot.Services
 
             services.AddSingleton<IDiscountSource, WildberriesSourcePlaywright>();
 
-            // Репозитории (абсолютные пути в Infrastructure)
-            var baseDir = AppContext.BaseDirectory; // ...\Bot\bin\Debug\net8.0
-            var infraPath = Path.GetFullPath(Path.Combine(baseDir, "..", "..", "..", "..", "..", "DiscountAggregator", "DiscountAggregator.Infrastructure"));
-            var infraData = Path.Combine(infraPath, "data");
-            Directory.CreateDirectory(infraData);
-            var dataSourceOptions = configuration.GetSection(DataSourceOptions.SectionName).Get<DataSourceOptions>();
-            var discountsFileName = string.IsNullOrWhiteSpace(dataSourceOptions?.JsonFilePath)
-                ? "discounts.json"
-                : Path.GetFileName(dataSourceOptions!.JsonFilePath);
-            var discountsPath = Path.IsPathRooted(dataSourceOptions?.JsonFilePath)
-                ? dataSourceOptions!.JsonFilePath
-                : Path.Combine(infraData, discountsFileName);
-            services.AddSingleton<IDiscountRepository>(provider => new JsonDiscountRepository(discountsPath));
-            services.AddSingleton<ISubscriptionRepository>(provider => new JsonSubscriptionRepository(Path.Combine(infraData, "subscriptions.json")));
-            services.AddSingleton<IQueryLogRepository>(provider => new JsonQueryLogRepository(Path.Combine(infraData, "querylog.json")));
-            services.AddSingleton<IApiSubscriptionRepository>(provider => new JsonApiSubscriptionRepository(Path.Combine(infraData, "apisubscriptions.json")));
-            services.AddSingleton<IUserSubscriptionRepository>(provider => new JsonUserSubscriptionRepository(Path.Combine(infraData, "usersubscriptions.json")));
+            // Подключаем инфраструктуру (регистрирует EF репозитории при наличии строки подключения)
+            services.AddInfrastructureLayer(configuration);
 
             // Сервисы приложения
+            services.AddScoped<IProductCacheService, RedisProductCacheService>();
             services.AddScoped<DiscountService>();
             services.AddScoped<CollectDiscountsCommand>();
 

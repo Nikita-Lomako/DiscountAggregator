@@ -76,17 +76,18 @@ namespace DiscountAggregator.Bot.Services
 
             using var scope = _serviceProvider.CreateScope();
             var discountService = scope.ServiceProvider.GetRequiredService<DiscountService>();
-            var repository = scope.ServiceProvider.GetRequiredService<IDiscountRepository>();
-            var subsRepo = scope.ServiceProvider.GetRequiredService<ISubscriptionRepository>();
-            var queryLog = scope.ServiceProvider.GetRequiredService<IQueryLogRepository>();
-            var apiRepo = scope.ServiceProvider.GetRequiredService<IApiSubscriptionRepository>();
-            var userApiRepo = scope.ServiceProvider.GetRequiredService<IUserSubscriptionRepository>();
+            var userRepo = scope.ServiceProvider.GetRequiredService<IUserRepository>();
+            var userCategorySubscriptionRepo = scope.ServiceProvider.GetRequiredService<IUserCategorySubscriptionRepository>();
+            var searchQueryRepo = scope.ServiceProvider.GetRequiredService<ISearchQueryRepository>();
             var notifier = scope.ServiceProvider.GetRequiredService<INotificationService>();
 
             try
             {
                 if (text.StartsWith("/start"))
                 {
+                    // Создаем или получаем пользователя
+                    await GetOrCreateUserAsync(userId, message, userRepo, cancellationToken);
+
                     await botClient.SendMessage(
                         chatId: userId,
                         text: "Добро пожаловать! Используйте /search <ключевое_слово> для поиска скидок. Команды: /subscribe, /info",
@@ -100,21 +101,17 @@ namespace DiscountAggregator.Bot.Services
                 }
                 else if (text.StartsWith("/subscribe"))
                 {
-                    var userApi = await userApiRepo.GetByUserAsync(userId, cancellationToken);
-                    var active = userApi.Where(u => u.Subscribed).ToList();
-                    if (active.Count == 0)
+                    var subscriptions = await userCategorySubscriptionRepo.GetActiveByUserIdAsync(userId, cancellationToken);
+                    if (!subscriptions.Any())
                     {
                         await botClient.SendMessage(userId, "У вас нет подписок. Введите /search <ключевое_слово> и подпишитесь из сообщения.", cancellationToken: cancellationToken);
                     }
                     else
                     {
-                        var apis = (await apiRepo.GetAllAsync(cancellationToken)).ToDictionary(a => a.Id, a => a);
-                        var lines = active
-                            .Select(us => apis.TryGetValue(us.ApiSubscriptionId, out var a)
-                                ? $"- {a.SourceKey}:{a.Keyword}"
-                                : $"- <неизвестный API> {us.ApiSubscriptionId}")
+                        var lines = subscriptions
+                            .Select(s => $"- {s.SourceFilter}: {s.Keyword}")
                             .ToList();
-                        await botClient.SendMessage(userId, "Ваши активные подписки:\n" + string.Join("\n", lines), cancellationToken: cancellationToken);
+                        await botClient.SendMessage(userId, "Ваши активные подписки на категории:\n" + string.Join("\n", lines), cancellationToken: cancellationToken);
                     }
                 }
                 else if (text.StartsWith("/search "))
@@ -136,25 +133,9 @@ namespace DiscountAggregator.Bot.Services
                         cancellationToken: cancellationToken
                     );
 
-                    // пока одна платформа wildberries
-                    var sourceKey = "wildberries";
-                    var api = await apiRepo.GetOrCreateAsync(sourceKey, keyword, cancellationToken);
-                    var existingUserApi = await userApiRepo.GetAsync(userId, api.Id, cancellationToken);
-                    if (existingUserApi is null)
-                    {
-                        await userApiRepo.UpsertAsync(new UserSubscription
-                        {
-                            Id = Guid.NewGuid(),
-                            UserId = userId,
-                            ApiSubscriptionId = api.Id,
-                            Subscribed = false,
-                            UpdatedAtUtc = DateTime.UtcNow
-                        }, cancellationToken);
-                    }
+                    var products = await discountService.GetOrCollectAsync(keyword, TimeSpan.FromHours(1), cancellationToken);
 
-                    var discounts = await discountService.GetOrCollectAsync(keyword, TimeSpan.FromHours(1), cancellationToken);
-
-                    if (!discounts.Any())
+                    if (!products.Any())
                     {
                         await botClient.SendMessage(
                             chatId: userId,
@@ -164,14 +145,25 @@ namespace DiscountAggregator.Bot.Services
                         return;
                     }
 
-                    await queryLog.AddAsync(new QueryLog { Id = Guid.NewGuid(), UserId = userId, Keyword = keyword, QueriedAtUtc = DateTime.UtcNow }, cancellationToken);
+                    // Создаем или получаем пользователя
+                    await GetOrCreateUserAsync(userId, message, userRepo, cancellationToken);
+
+                    await searchQueryRepo.AddQueryAsync(new SearchQuery 
+                    { 
+                        UserId = userId, 
+                        Keyword = keyword, 
+                        SourceFilter = "wildberries",
+                        KeywordNormalized = keyword.ToLowerInvariant(),
+                        QueriedAtUtc = DateTime.UtcNow
+                    }, cancellationToken);
+                    
                     var page = 1;
-                    await SendPagedResults(userId, sourceKey, keyword, discounts.ToList(), page, cancellationToken);
+                    await SendPagedResults(userId, "wildberries", keyword, products.ToList(), page, cancellationToken);
                 }
                 else if (text.StartsWith("/recent"))
                 {
-                    var logs = await queryLog.GetRecentAsync(userId, TimeSpan.FromHours(1), cancellationToken);
-                    var keywords = logs.Select(l => l.Keyword).Distinct().Take(10).ToList();
+                    var queries = await searchQueryRepo.GetRecentByUserIdAsync(userId, 1, cancellationToken);
+                    var keywords = queries.Select(q => q.Keyword).Distinct().Take(10).ToList();
                     if (keywords.Count == 0)
                     {
                         await botClient.SendMessage(userId, "Нет недавних запросов за последний час.", cancellationToken: cancellationToken);
@@ -202,14 +194,14 @@ namespace DiscountAggregator.Bot.Services
             }
         }
 
-        private async Task SendPagedResults(long userId, string sourceKey, string keyword, List<Domain.Entities.Discount> items, int page, CancellationToken ct, int? messageId = null)
+        private async Task SendPagedResults(long userId, string sourceKey, string keyword, List<Domain.Entities.Product> items, int page, CancellationToken ct, int? messageId = null)
         {
             const int pageSize = 10;
             var totalPages = Math.Max(1, (int)Math.Ceiling(items.Count / (double)pageSize));
             page = Math.Clamp(page, 1, totalPages);
 
             var slice = items.Skip((page - 1) * pageSize).Take(pageSize).ToList();
-            var text = string.Join("\n\n", slice.Select(d => $"{d.Title}\nБренд: {d.Brand}\nЦена: {d.Price} (было {d.OldPrice})\nСкидка: {d.DiscountPercent}%\nСсылка: {d.Url}"));
+            var text = string.Join("\n\n", slice.Select(p => $"{p.Title}\nБренд: {p.Brand}\nЦена: {p.CurrentPrice} (было {p.OldPrice})\nСкидка: {p.DiscountPercent}%\nСсылка: {p.Url}"));
 
             var inline = new List<List<InlineKeyboardButton>>();
             var navRow = new List<InlineKeyboardButton>();
@@ -247,6 +239,29 @@ namespace DiscountAggregator.Bot.Services
             }
         }
 
+        private async Task<Domain.Entities.User> GetOrCreateUserAsync(long userId, Message message, IUserRepository userRepo, CancellationToken cancellationToken)
+        {
+            var user = await userRepo.GetByIdAsync(userId, cancellationToken);
+            if (user == null)
+            {
+                user = new Domain.Entities.User
+                {
+                    Id = userId,
+                    Username = message.From?.Username,
+                    RegisteredAtUtc = DateTime.UtcNow,
+                    LastActivityAtUtc = DateTime.UtcNow
+                };
+                await userRepo.UpsertAsync(user, cancellationToken);
+            }
+            else
+            {
+                // Обновляем время последней активности
+                user.LastActivityAtUtc = DateTime.UtcNow;
+                await userRepo.UpsertAsync(user, cancellationToken);
+            }
+            return user;
+        }
+
         private async Task HandleCallback(CallbackQuery query, CancellationToken ct)
         {
             var chatId = query.Message!.Chat.Id;
@@ -278,26 +293,25 @@ namespace DiscountAggregator.Bot.Services
                     var sourceKey = parts[1];
                     var keyword = parts[2];
                     using var scope = _serviceProvider.CreateScope();
-                    var apiRepo = scope.ServiceProvider.GetRequiredService<IApiSubscriptionRepository>();
-                    var userApiRepo = scope.ServiceProvider.GetRequiredService<IUserSubscriptionRepository>();
-                    var api = await apiRepo.GetOrCreateAsync(sourceKey, keyword, ct);
-                    var us = await userApiRepo.GetAsync(chatId, api.Id, ct);
-                    if (us is null || !us.Subscribed)
+                    var discountService = scope.ServiceProvider.GetRequiredService<DiscountService>();
+                    var userCategorySubscriptionRepo = scope.ServiceProvider.GetRequiredService<IUserCategorySubscriptionRepository>();
+                    
+                    // Создаем подписку на категорию
+                    var subscription = new Domain.Entities.UserCategorySubscription
                     {
-                        await userApiRepo.UpsertAsync(new UserSubscription
-                        {
-                            Id = us?.Id ?? Guid.NewGuid(),
-                            UserId = chatId,
-                            ApiSubscriptionId = api.Id,
-                            Subscribed = true,
-                            UpdatedAtUtc = DateTime.UtcNow
-                        }, ct);
-                        await _botClient.AnswerCallbackQuery(query.Id, "Подписка добавлена", cancellationToken: ct);
-                    }
-                    else
-                    {
-                        await _botClient.AnswerCallbackQuery(query.Id, "Вы уже подписаны", cancellationToken: ct);
-                    }
+                        UserId = chatId,
+                        Keyword = keyword,
+                        SourceFilter = sourceKey,
+                        IsActive = true,
+                        SubscribedAtUtc = DateTime.UtcNow
+                    };
+                    
+                    await userCategorySubscriptionRepo.UpsertAsync(subscription, ct);
+                    
+                    // Сохраняем товары из кеша в базу данных
+                    await discountService.SaveProductsToDatabaseAsync(keyword, ct);
+                    
+                    await _botClient.AnswerCallbackQuery(query.Id, $"Подписка на '{keyword}' добавлена", cancellationToken: ct);
                 }
                 else if (query.Data.StartsWith("unsub:"))
                 {
@@ -306,17 +320,18 @@ namespace DiscountAggregator.Bot.Services
                     var sourceKey = parts[1];
                     var keyword = parts[2];
                     using var scope = _serviceProvider.CreateScope();
-                    var apiRepo = scope.ServiceProvider.GetRequiredService<IApiSubscriptionRepository>();
-                    var userApiRepo = scope.ServiceProvider.GetRequiredService<IUserSubscriptionRepository>();
-                    var api = await apiRepo.GetOrCreateAsync(sourceKey, keyword, ct);
-                    var us = await userApiRepo.GetAsync(chatId, api.Id, ct);
-                    if (us is not null && us.Subscribed)
-                    {
-                        us.Subscribed = false;
-                        us.UpdatedAtUtc = DateTime.UtcNow;
-                        await userApiRepo.UpsertAsync(us, ct);
-                    }
-                    await _botClient.AnswerCallbackQuery(query.Id, "Подписка удалена", cancellationToken: ct);
+                    var userCategorySubscriptionRepo = scope.ServiceProvider.GetRequiredService<IUserCategorySubscriptionRepository>();
+                    var discountService = scope.ServiceProvider.GetRequiredService<DiscountService>();
+                    
+                    // Отписываемся от категории
+                    await userCategorySubscriptionRepo.DeleteAsync(chatId, keyword, sourceKey, ct);
+                    
+                    // Удаляем все данные связанные с этой категорией
+                    var deletedCount = await discountService.DeleteProductsByKeywordAsync(keyword, ct);
+                    
+                    await _botClient.AnswerCallbackQuery(query.Id, 
+                        $"Подписка на '{keyword}' удалена. Удалено товаров: {deletedCount}", 
+                        cancellationToken: ct);
                 }
             }
             catch (Exception ex)

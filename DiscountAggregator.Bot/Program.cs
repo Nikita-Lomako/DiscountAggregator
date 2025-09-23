@@ -36,21 +36,25 @@ namespace DiscountAggregator.Bot
             Host.CreateDefaultBuilder(args)
                  .UseSerilog((context, services, loggerConfiguration) =>
                 {
-                    // Готовим абсолютные пути к папке Infrastructure для логов
-                    string baseDir = AppContext.BaseDirectory; // ...\Bot\bin\Debug\net8.0
-                    var infraPath = Path.GetFullPath(Path.Combine(baseDir, "..", "..", "..", "..", "..", "DiscountAggregator", "DiscountAggregator.Infrastructure"));
-                    var infraLogs = Path.Combine(infraPath, "logs");
-                    Directory.CreateDirectory(infraLogs);
+                    // Создаем папку для логов в рабочей директории приложения
+                    var logsDir = Path.Combine(AppContext.BaseDirectory, "logs");
+                    Directory.CreateDirectory(logsDir);
+                    
                     loggerConfiguration
                         .ReadFrom.Configuration(context.Configuration)
                         .ReadFrom.Services(services)
                         .Enrich.FromLogContext()
-                        .WriteTo.File(Path.Combine(infraLogs, "discount-aggregator-.log"), rollingInterval: RollingInterval.Day, retainedFileCountLimit: 7);
+                        .WriteTo.File(Path.Combine(logsDir, "discount-aggregator-.log"), rollingInterval: RollingInterval.Day, retainedFileCountLimit: 7);
                 })
                 .ConfigureServices((context, services) =>
                 {
                     // Ничего не делаем здесь с рабочей директорией
                     // Регистрируем все сервисы
+                    services.AddStackExchangeRedisCache(options =>
+                    {
+                        options.Configuration = context.Configuration["Redis:Configuration"];
+                        options.InstanceName = "DiscountAggregator_";
+                    });
                     services.AddBotServices(context.Configuration);
 
                     // Регистрируем Telegram Bot Hosted Service
