@@ -1,0 +1,70 @@
+# Docker Compose Override для локальной разработки
+# Этот файл автоматически применяется при запуске docker-compose up
+# и переопределяет настройки из docker-compose.yml
+
+services:
+  db:
+    # Переопределяем настройки базы данных для разработки
+    environment:
+      POSTGRES_PASSWORD: Pg375Nz%312Nik!
+      POSTGRES_DB: productaggregator
+      POSTGRES_USER: postgres
+    # Добавляем порт для доступа из хоста
+    ports:
+      - "5432:5432"
+    # Добавляем volume для персистентности данных
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Можно добавить init скрипты если нужно
+      # - ./init-db:/docker-entrypoint-initdb.d
+
+  redis:
+    # Переопределяем настройки Redis для разработки
+    command: ["redis-server", "--requirepass", "R375Nz%312Nik!"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    # Добавляем конфигурацию Redis для разработки
+    environment:
+      - REDIS_PASSWORD=R375Nz%312Nik!
+
+  discountaggregator.bot:
+    # Переопределяем настройки бота для разработки
+    environment:
+      # Используем локальные пароли вместо переменных окружения
+      - ConnectionStrings__DefaultConnection=Host=db;Port=5432;Database=productaggregator;Username=postgres;Password=Pg375Nz%312Nik!
+      - Redis__Configuration=redis:6379,password=R375Nz%312Nik!
+      - TelegramBot__Token=8295591284:AAFacmgdQuacyxrVnZAaorOQHk51bRpUd5Q
+      - PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+      # Настройки для разработки
+      - ASPNETCORE_ENVIRONMENT=Development
+      - Logging__LogLevel__Default=Debug
+    volumes:
+      # Монтируем папку с логами
+      - ./logs:/app/logs
+      # Можно добавить монтирование исходного кода для hot reload (если нужно)
+      # - ./DiscountAggregator.Bot:/app
+    # Добавляем порты для отладки (если нужно)
+    ports:
+      - "8080:80"
+      - "8443:443"
+    # Добавляем restart policy для разработки
+    restart: unless-stopped
+    # Добавляем healthcheck
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health", "||", "exit", "1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+# Дополнительные volumes для разработки
+volumes:
+  pgdata:
+    driver: local
+  redisdata:
+    driver: local
+  # Можно добавить volume для логов
+  logs:
+    driver: local

@@ -34,6 +34,9 @@ services:
       - PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
     volumes:
       - ./logs:/app/logs
+    shm_size: '2gb'
+    security_opt:
+      - seccomp:unconfined
 
 volumes:
   pgdata:

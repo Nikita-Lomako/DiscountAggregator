@@ -1,16 +1,12 @@
 #!/bin/bash
 
-
-echo "Останавливаем существующие контейнеры..."
+echo "Останавливаем контейнеры..."
 docker-compose down
 
 echo "Удаляем старые образы..."
-docker rmi discountaggregator.bot:latest 2>/dev/null || true
+docker rmi discountaggregatorbot 2>/dev/null || true
 
-echo "Очищаем кэш Docker..."
-docker system prune -f
-
-echo "Пересобираем контейнеры..."
+echo "Пересобираем образы..."
 docker-compose build --no-cache
 
 echo "Запускаем контейнеры..."

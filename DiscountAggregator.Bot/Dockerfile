@@ -1,58 +1,29 @@
-FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS base
+# Dockerfile для отладки в Visual Studio
+FROM mcr.microsoft.com/playwright/dotnet:v1.54.0-jammy AS base
 WORKDIR /app
 EXPOSE 80
 EXPOSE 443
 
-
-RUN apt-get update && apt-get install -y \
-    wget \
-    gnupg \
-    ca-certificates \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
-
-# Устанавливаем Node.js для Playwright
-RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
-    && apt-get install -y nodejs
+# Устанавливаем переменные окружения для Playwright
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
-
 COPY ["DiscountAggregator.Bot/DiscountAggregator.Bot.csproj", "DiscountAggregator.Bot/"]
 COPY ["DiscountAggregator.Application/DiscountAggregator.Application.csproj", "DiscountAggregator.Application/"]
 COPY ["DiscountAggregator.Domain/DiscountAggregator.Domain.csproj", "DiscountAggregator.Domain/"]
 COPY ["DiscountAggregator.Infrastructure/DiscountAggregator.Infrastructure.csproj", "DiscountAggregator.Infrastructure/"]
-
-RUN dotnet restore "DiscountAggregator.Domain/DiscountAggregator.Domain.csproj"
-RUN dotnet restore "DiscountAggregator.Application/DiscountAggregator.Application.csproj"
-RUN dotnet restore "DiscountAggregator.Infrastructure/DiscountAggregator.Infrastructure.csproj"
 RUN dotnet restore "DiscountAggregator.Bot/DiscountAggregator.Bot.csproj"
-
 COPY . .
-
 WORKDIR "/src/DiscountAggregator.Bot"
-
-RUN dotnet build "DiscountAggregator.Bot.csproj" -c Release -o /app/build
+RUN dotnet build "DiscountAggregator.Bot.csproj" -c $BUILD_CONFIGURATION -o /app/build
 
 FROM build AS publish
-RUN dotnet publish "DiscountAggregator.Bot.csproj" -c Release -o /app/publish
+ARG BUILD_CONFIGURATION=Release
+RUN dotnet publish "DiscountAggregator.Bot.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false
 
 FROM base AS final
 WORKDIR /app
 COPY --from=publish /app/publish .
-
-RUN dotnet tool install --global Microsoft.Playwright.CLI
-ENV PATH="/root/.dotnet/tools:${PATH}"
-
-RUN mkdir -p /tmp/playwright-install
-WORKDIR /tmp/playwright-install
-RUN echo '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup><ItemGroup><PackageReference Include="Microsoft.Playwright" Version="1.54.0" /></ItemGroup></Project>' > TestProject.csproj
-RUN dotnet restore TestProject.csproj
-RUN playwright install chromium --with-deps
-
-WORKDIR /app
-
-ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
-ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=0
-
 ENTRYPOINT ["dotnet", "DiscountAggregator.Bot.dll"]
